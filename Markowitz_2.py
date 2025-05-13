@@ -56,12 +56,13 @@ class MyPortfolio:
         self.exclude = exclude
         self.lookback = lookback
         self.gamma = gamma
+        self.momentum_period = 21  # <-- Add this line for default momentum period
 
     def calculate_weights(self):
         # Get the assets by excluding the specified column
         assets = self.price.columns[self.price.columns != self.exclude]
 
-        # Calculate the portfolio weights
+        # Prepare the portfolio weights DataFrame
         self.portfolio_weights = pd.DataFrame(
             index=self.price.index, columns=self.price.columns
         )
@@ -69,11 +70,37 @@ class MyPortfolio:
         """
         TODO: Complete Task 4 Below
         """
+        # Use both positive momentum and positive volatility for selection
+        lookback = max(self.lookback, 21)
+        for i in range(self.momentum_period, len(self.price)):
+            idx = self.price.index[i]
+            recent_returns = self.returns[assets].iloc[i-self.momentum_period:i]
+            momentum = recent_returns.mean()
+            volatility = recent_returns.std()
+            market_trend = self.returns[self.exclude].iloc[i-self.momentum_period:i].mean()
+            weights = pd.Series(0, index=assets)
 
+            # Only consider assets with positive momentum and nonzero volatility
+            valid = (momentum > 0) & (volatility > 0)
+            if valid.any():
+                momentum_vol_ratio = momentum[valid] / volatility[valid]
+                ranks = momentum_vol_ratio.rank(ascending=False)
+                alloc = [0.5, 0.3, 0.2]
+                for n, alloc_val in enumerate(alloc, 1):
+                    asset_idx = ranks.index[ranks == n]
+                    if len(asset_idx) > 0:
+                        weights[asset_idx[0]] = alloc_val
+                if market_trend < 0:
+                    weights = weights * 0.6
+            # If no valid asset, stay in cash (all zeros)
+            if weights.sum() > 0:
+                weights = weights / weights.sum()
+            self.portfolio_weights.loc[idx, assets] = weights
+
+        self.portfolio_weights[self.exclude] = 0
         """
         TODO: Complete Task 4 Above
         """
-
         self.portfolio_weights.ffill(inplace=True)
         self.portfolio_weights.fillna(0, inplace=True)
 
