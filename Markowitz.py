@@ -61,7 +61,16 @@ class EqualWeightPortfolio:
         """
         TODO: Complete Task 1 Below
         """
-
+        # Calculate equal weight for each asset (excluding SPY)
+        n_assets = len(assets)
+        equal_weight = 1.0 / n_assets
+        
+        # Assign equal weights to all assets except the excluded one
+        for asset in assets:
+            self.portfolio_weights[asset] = equal_weight
+        
+        # Set weight of excluded asset to 0
+        self.portfolio_weights[self.exclude] = 0
         """
         TODO: Complete Task 1 Above
         """
@@ -112,7 +121,28 @@ class RiskParityPortfolio:
         """
         TODO: Complete Task 2 Below
         """
-
+        # Set weight of excluded asset to 0
+        self.portfolio_weights[self.exclude] = 0
+        
+        # Loop through each date starting from the lookback period
+        for i in range(self.lookback+1, len(df)):
+            # Get historical returns for the lookback window
+            returns_window = df_returns[assets].iloc[i-self.lookback:i]
+            
+            # Calculate volatility (standard deviation) for each asset
+            volatilities = returns_window.std()
+            
+            # Handle any zero volatilities to prevent division by zero
+            volatilities = volatilities.replace(0, np.nan).fillna(volatilities.mean() if not volatilities.isna().all() else 1e-6)
+            
+            # Calculate inverse volatility for each asset
+            inverse_volatility = 1 / volatilities
+            
+            # Calculate weights according to the risk parity formula: wi = (1/σi) / Σ(1/σj)
+            weights = inverse_volatility / inverse_volatility.sum()
+            
+            # Assign weights to the portfolio for the current date
+            self.portfolio_weights.loc[df.index[i], assets] = weights
         """
         TODO: Complete Task 2 Above
         """
@@ -185,10 +215,16 @@ class MeanVariancePortfolio:
                 TODO: Complete Task 3 Below
                 """
 
-                # Sample Code: Initialize Decision w and the Objective
-                # NOTE: You can modify the following code
-                w = model.addMVar(n, name="w", ub=1)
-                model.setObjective(w.sum(), gp.GRB.MAXIMIZE)
+                # Initialize decision variables (portfolio weights)
+                w = model.addMVar(n, lb=0, ub=1, name="w")
+                
+                # Add the no leverage constraint: sum of weights = 1
+                model.addConstr(w.sum() == 1, name="budget")
+                
+                # Set up the quadratic objective function: w^T μ - (γ/2) w^T Σw
+                # For maximization, we use: maximize w^T μ - (γ/2) w^T Σw
+                obj = mu @ w - gamma/2 * w @ Sigma @ w
+                model.setObjective(obj, gp.GRB.MAXIMIZE)
 
                 """
                 TODO: Complete Task 3 Above
@@ -290,7 +326,7 @@ class Helper:
         df_weights.plot.area(ax=ax)
         ax.set_xlabel("Date")
         ax.set_ylabel("Allocation")
-        ax.set_title("Asset Allocation Over Time")
+        ax.setTitle("Asset Allocation Over Time")
         plt.show()
         return None
 
